@@ -1,4 +1,4 @@
-# Wallet Generation Service
+# Xion Wallet Generation Service
 
 This service is an Express.js application that allows the generation of Xion blockchain wallets. The wallet generation includes mnemonic phrases, addresses, and encrypted private keys for secure storage.
 
