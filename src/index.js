@@ -48,11 +48,11 @@ const swaggerOptions = {
         },
         servers: [
             {
-                url: "http://localhost:3000",
+                url: "https://xionwallet.onrender.com",
             },
         ],
     },
-    apis: ["./index.js"], 
+    apis: ["./src/index.js"], 
 };
 
 const swaggerSpec = swaggerJsdoc(swaggerOptions);
