@@ -55,8 +55,8 @@ Returns a JSON object with the following fields:
 
 1. Clone the repository:
    ```bash
-   git clone <repository_url>
-   cd <repository_directory>
+   git clone 'https://github.com/Noah-droid/xionwallets.git'
+   cd xionwallets
    ```
 
 2. Install dependencies:
@@ -66,7 +66,7 @@ Returns a JSON object with the following fields:
 
 3. Start the server:
    ```bash
-   node app.js
+   npm run dev
    ```
 
 4. Access the service:
