@@ -5,6 +5,7 @@ const { DirectSecp256k1Wallet } = require("@cosmjs/proto-signing");
 const { toBech32 } = require("@cosmjs/encoding");
 const swaggerJsdoc = require("swagger-jsdoc");
 const swaggerUi = require("swagger-ui-express");
+const { StargateClient } = require("@cosmjs/stargate");
 
 
 const app = express();
@@ -210,6 +211,31 @@ app.post("/decrypt-key", (req, res) => {
     }
 });
 
+
+const RPC_ENDPOINT = "https://rpc.xion-testnet-1.burnt.com:443";
+
+// Endpoint to get wallet balance
+app.get("/get-balance/:address", async (req, res) => {
+    const { address } = req.params;
+
+    try {
+        // Connect to the StargateClient
+        const client = await StargateClient.connect(RPC_ENDPOINT);
+
+        // Query balance
+        const balance = await client.getBalance(address, "uxion"); // Replace 'uxion' with the correct token denom
+        client.disconnect();
+
+        // Response with balance details
+        res.status(200).json({
+            address,
+            balance: balance ? `${balance.amount} ${balance.denom}` : "0 uxion",
+        });
+    } catch (error) {
+        console.error("Error querying balance:", error.message);
+        res.status(500).json({ error: "Failed to fetch balance. Check the address or try again later." });
+    }
+});
 // Run the server
 const PORT = 3000;
 app.listen(PORT, () => {
