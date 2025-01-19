@@ -226,6 +226,9 @@ app.get("/get-balance/:address", async (req, res) => {
         const balance = await client.getBalance(address, "uxion"); // Replace 'uxion' with the correct token denom
         client.disconnect();
 
+        // Log the balance details before sending the response
+        console.log(`Fetched balance for address ${address}:`, balance);
+
         // Response with balance details
         res.status(200).json({
             address,
@@ -236,6 +239,7 @@ app.get("/get-balance/:address", async (req, res) => {
         res.status(500).json({ error: "Failed to fetch balance. Check the address or try again later." });
     }
 });
+
 // Run the server
 const PORT = 3000;
 app.listen(PORT, () => {
