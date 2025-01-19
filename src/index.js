@@ -100,17 +100,27 @@ app.post("/generate-wallet", async (req, res) => {
         // Encrypt the private key for secure storage
         const encryptedKey = encrypt(privateKey);
 
+        // Debugging: Log wallet details
+        console.log("Generated Wallet Details:");
+        console.log(`Private Key: ${privateKey}`);
+        console.log(`Encrypted Private Key: ${encryptedKey.data}`);
+        console.log(`Initialization Vector (IV): ${encryptedKey.iv}`);
+        console.log(`Wallet Address: ${account.address}`);
+        console.log(`Public Key: ${account.pubkey.toString("hex")}`);
+
         res.status(200).json({
             address: account.address, // Wallet address
             encryptedPrivateKey: encryptedKey.data, // Encrypted private key
             iv: encryptedKey.iv, // Initialization vector for decryption
             publicKey: account.pubkey.toString("hex"), // Optional: public key
         });
+
     } catch (error) {
         console.error("Error generating wallet:", error.message);
         res.status(500).json({ error: "Failed to generate wallet" });
     }
 });
+
 /**
  * @swagger
  * /recover-wallet:
