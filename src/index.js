@@ -7,9 +7,26 @@ const swaggerJsdoc = require("swagger-jsdoc");
 const swaggerUi = require("swagger-ui-express");
 const { StargateClient } = require("@cosmjs/stargate");
 
-
+const morgan = require("morgan");
 const app = express();
 app.use(bodyParser.json());
+// Use morgan middleware for logging
+app.use(morgan("combined"));
+
+app.use(express.json()); // Built-in middleware to parse JSON
+app.use(morgan("dev")); // Log requests with concise colored logs
+
+// Custom logging middleware
+app.use((req, res, next) => {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+    if (Object.keys(req.body).length > 0) {
+        console.log(`Body: ${JSON.stringify(req.body)}`);
+    }
+    next();
+});
+
+
+
 
 // Encryption settings
 const ALGORITHM = "aes-256-cbc";
