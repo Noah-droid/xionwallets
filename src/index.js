@@ -9,7 +9,7 @@ const { StargateClient } = require("@cosmjs/stargate");
 
 const morgan = require("morgan");
 const app = express();
-app.use(bodyParser.json());
+// app.use(bodyParser.json());
 // Use morgan middleware for logging
 app.use(morgan("combined"));
 
@@ -66,7 +66,7 @@ const swaggerOptions = {
         },
         servers: [
             {
-                url: "https://xionwallet.onrender.com",
+                url: "https://xionwallet-8inr.onrender.com",
             },
         ],
     },
@@ -238,34 +238,127 @@ app.post("/decrypt-key", (req, res) => {
     }
 });
 
+const axios = require("axios");
 
-const RPC_ENDPOINT = "https://rpc.xion-testnet-1.burnt.com:443";
+const RPC_ENDPOINT = "https://api.xion-testnet-1.burnt.com";
 
-// Endpoint to get wallet balance
+// Endpoint to get wallet balance using Xion's REST API
 app.get("/get-balance/:address", async (req, res) => {
     const { address } = req.params;
+    const denom = "uxion"; // Token denomination
 
     try {
-        // Connect to the StargateClient
-        const client = await StargateClient.connect(RPC_ENDPOINT);
+        // Construct API URL
+        const apiUrl = `${RPC_ENDPOINT}/cosmos/bank/v1beta1/balances/${address}/by_denom?denom=${denom}`;
 
-        // Query balance
-        const balance = await client.getBalance(address, "uxion"); // Replace 'uxion' with the correct token denom
-        client.disconnect();
+        // Fetch balance from Xion API
+        const response = await axios.get(apiUrl);
+        const balanceData = response.data.balance;
 
-        // Log the balance details before sending the response
-        console.log(`Fetched balance for address ${address}:`, balance);
-
-        // Response with balance details
+        // Respond with balance details
         res.status(200).json({
             address,
-            balance: balance ? `${balance.amount} ${balance.denom}` : "0 uxion",
+            balance: balanceData ? `${balanceData.amount} ${balanceData.denom}` : `0 ${denom}`,
         });
     } catch (error) {
-        console.error("Error querying balance:", error.message);
-        res.status(500).json({ error: "Failed to fetch balance. Check the address or try again later." });
+        console.error("Error fetching balance:", error.message);
+        res.status(500).json({ error: "Failed to fetch balance. Ensure the address is correct." });
     }
 });
+
+
+
+// import { DirectSecp256k1Wallet } from "@cosmjs/proto-signing";
+// import { toBech32 } from "@cosmjs/encoding";
+// import { rawSecp256k1PubkeyToRawAddress } from "@cosmjs/amino";
+// import { coins, makeSignDoc, makeStdTx } from "@cosmjs/stargate";
+
+
+
+
+// const DENOM = "uxion";
+// const GAS_LIMIT = "200000";
+// const GAS_PRICE = "5000"; // Set an appropriate fee
+
+
+
+// Transfer Xion tokens
+// app.post("/transfer", async (req, res) => {
+//     const { recipient, amount } = req.body;
+//     const privateKey = process.env.PRIVATE_KEY;
+
+//     if (!privateKey) {
+//         return res.status(400).json({ error: "Missing PRIVATE_KEY in environment variables." });
+//     }
+//     if (!recipient || !amount) {
+//         return res.status(400).json({ error: "Recipient address and amount are required." });
+//     }
+
+//     try {
+//         // Create wallet from private key
+//         const wallet = await DirectSecp256k1Wallet.fromKey(Buffer.from(privateKey, "hex"), "xion");
+//         const [account] = await wallet.getAccounts();
+//         const sender = toBech32("xion", rawSecp256k1PubkeyToRawAddress(account.pubkey));
+
+//         // Fetch account details (account_number & sequence)
+//         const accountInfoUrl = `${RPC_ENDPOINT}/cosmos/auth/v1beta1/accounts/${sender}`;
+//         const accountResponse = await axios.get(accountInfoUrl);
+//         const accountData = accountResponse.data.account;
+
+//         const accountNumber = accountData.account_number;
+//         const sequence = accountData.sequence;
+
+//         // Construct transaction message
+//         const msgSend = {
+//             typeUrl: "/cosmos.bank.v1beta1.MsgSend",
+//             value: {
+//                 fromAddress: sender,
+//                 toAddress: recipient,
+//                 amount: coins(amount, DENOM),
+//             },
+//         };
+
+//         // Create transaction body
+//         const txBody = {
+//             messages: [msgSend],
+//             memo: "Xion token transfer",
+//         };
+
+//         // Create signing document
+//         const signDoc = makeSignDoc(
+//             txBody.messages,
+//             { gas: GAS_LIMIT, amount: coins(GAS_PRICE, DENOM) }, // Fee
+//             "xion-testnet-1",
+//             txBody.memo,
+//             accountNumber,
+//             sequence
+//         );
+
+//         // Sign the transaction
+//         const { signature, signed } = await wallet.signDirect(sender, signDoc);
+
+//         // Construct the final transaction
+//         const signedTx = makeStdTx(signed, [signature]);
+
+//         // Broadcast the transaction to the Xion REST API
+//         const broadcastUrl = `${RPC_ENDPOINT}/cosmos/tx/v1beta1/txs`;
+//         const broadcastResponse = await axios.post(broadcastUrl, {
+//             tx_bytes: Buffer.from(signedTx).toString("base64"),
+//             mode: "BROADCAST_MODE_SYNC",
+//         });
+
+//         return res.status(200).json({
+//             message: "Transaction broadcasted successfully",
+//             transaction: broadcastResponse.data,
+//         });
+//     } catch (error) {
+//         console.error("Error sending transaction:", error.message);
+//         return res.status(500).json({ error: "Failed to send transaction", details: error.message });
+//     }
+// });
+
+
+
 
 // Run the server
 const PORT = 3000;
