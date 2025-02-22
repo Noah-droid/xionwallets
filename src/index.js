@@ -238,9 +238,57 @@ app.post("/decrypt-key", (req, res) => {
     }
 });
 
+
+
+
+
 const axios = require("axios");
 
 const RPC_ENDPOINT = "https://api.xion-testnet-1.burnt.com";
+
+// Add this before the get-balance endpoint
+
+/**
+ * @swagger
+ * /get-balance/{address}:
+ *   get:
+ *     summary: Get wallet balance
+ *     description: Retrieves the balance of a Xion wallet address
+ *     parameters:
+ *       - in: path
+ *         name: address
+ *         required: true
+ *         description: Xion wallet address
+ *         schema:
+ *           type: string
+ *         example: xion1...
+ *     responses:
+ *       200:
+ *         description: Balance retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 address:
+ *                   type: string
+ *                   description: The wallet address
+ *                   example: xion1...
+ *                 balance:
+ *                   type: string
+ *                   description: The wallet balance with denomination
+ *                   example: 1000 uxion
+ *       500:
+ *         description: Error fetching balance
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: Failed to fetch balance. Ensure the address is correct.
+ */
 
 // Endpoint to get wallet balance using Xion's REST API
 app.get("/get-balance/:address", async (req, res) => {
