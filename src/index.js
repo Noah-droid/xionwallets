@@ -138,6 +138,103 @@ app.post("/generate-wallet", async (req, res) => {
     }
 });
 
+
+/**
+ * @swagger
+ * /generate-wallet-service:
+ *   post:
+ *     summary: Generate a wallet from a private key
+ *     description: Creates a new wallet using the provided private key and returns encrypted wallet details
+ *     tags:
+ *       - Wallet
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - privateKey
+ *             properties:
+ *               privateKey:
+ *                 type: string
+ *                 description: The private key in hexadecimal format
+ *                 example: "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+ *     responses:
+ *       200:
+ *         description: Wallet generated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 address:
+ *                   type: string
+ *                   description: The wallet address
+ *                   example: "xion1abc..."
+ *                 encryptedPrivateKey:
+ *                   type: string
+ *                   description: The encrypted private key
+ *                   example: "encrypted-data-string"
+ *                 iv:
+ *                   type: string
+ *                   description: Initialization vector used for encryption
+ *                   example: "initialization-vector"
+ *                 publicKey:
+ *                   type: string
+ *                   description: The public key in hexadecimal format
+ *                   example: "0x1234..."
+ *       400:
+ *         description: Bad request - Private key is missing
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: "Private key is required"
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: "Failed to generate wallet"
+ */
+
+app.post("/generate-wallet-service", async (req, res) => {
+    try {
+        const { privateKey } = req.body;
+
+        if (!privateKey) {
+            return res.status(400).json({ error: "Private key is required" });
+        }
+
+        // Create wallet from provided private key
+        const wallet = await DirectSecp256k1Wallet.fromKey(Buffer.from(privateKey, "hex"), "xion");
+        const [account] = await wallet.getAccounts();
+
+        // Encrypt the private key
+        const encryptedKey = encrypt(privateKey);
+
+        res.status(200).json({
+            address: account.address,
+            encryptedPrivateKey: encryptedKey.data,
+            iv: encryptedKey.iv,
+            publicKey: account.pubkey.toString("hex"),
+        });
+
+    } catch (error) {
+        console.error("Error generating wallet:", error.message);
+        res.status(500).json({ error: "Failed to generate wallet" });
+    }
+});
+
+
 /**
  * @swagger
  * /recover-wallet:
@@ -244,7 +341,7 @@ app.post("/decrypt-key", (req, res) => {
 
 const axios = require("axios");
 
-const RPC_ENDPOINT = "https://api.xion-testnet-1.burnt.com";
+const RPC_ENDPOINT = "https://api.xion-testnet-2.burnt.com";
 
 // Add this before the get-balance endpoint
 
