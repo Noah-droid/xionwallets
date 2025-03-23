@@ -1,19 +1,22 @@
-const express = require("express");
-const bodyParser = require("body-parser");
-const crypto = require("crypto");
-const { DirectSecp256k1Wallet } = require("@cosmjs/proto-signing");
-const { toBech32 } = require("@cosmjs/encoding");
-const swaggerJsdoc = require("swagger-jsdoc");
-const swaggerUi = require("swagger-ui-express");
-const { StargateClient } = require("@cosmjs/stargate");
+import express, { json } from "express";
+import bodyParser from "body-parser";
+import { randomBytes, createCipheriv, createDecipheriv } from "crypto";
+import { DirectSecp256k1Wallet } from "@cosmjs/proto-signing";
+import { toBech32 } from "@cosmjs/encoding";
+import swaggerJsdoc from "swagger-jsdoc";
+import { serve, setup } from "swagger-ui-express";
+import { StargateClient } from '@cosmjs/stargate';
+import axios from 'axios';
 
-const morgan = require("morgan");
+
+
+import morgan from "morgan";
 const app = express();
 // app.use(bodyParser.json());
 // Use morgan middleware for logging
 app.use(morgan("combined"));
 
-app.use(express.json()); // Built-in middleware to parse JSON
+app.use(json()); // Built-in middleware to parse JSON
 app.use(morgan("dev")); // Log requests with concise colored logs
 
 // Custom logging middleware
@@ -30,13 +33,13 @@ app.use((req, res, next) => {
 
 // Encryption settings
 const ALGORITHM = "aes-256-cbc";
-const ENCRYPTION_KEY = crypto.randomBytes(32); // Replace with a secure key in production
+const ENCRYPTION_KEY = randomBytes(32); // Replace with a secure key in production
 const IV_LENGTH = 16;
 
 // Helper functions for encryption
 function encrypt(text) {
-    const iv = crypto.randomBytes(IV_LENGTH);
-    const cipher = crypto.createCipheriv(ALGORITHM, ENCRYPTION_KEY, iv);
+    const iv = randomBytes(IV_LENGTH);
+    const cipher = createCipheriv(ALGORITHM, ENCRYPTION_KEY, iv);
     const encrypted = Buffer.concat([cipher.update(text), cipher.final()]);
     return {
         iv: iv.toString("hex"),
@@ -45,7 +48,7 @@ function encrypt(text) {
 }
 
 function decrypt(encryptedText, iv) {
-    const decipher = crypto.createDecipheriv(ALGORITHM, ENCRYPTION_KEY, Buffer.from(iv, "hex"));
+    const decipher = createDecipheriv(ALGORITHM, ENCRYPTION_KEY, Buffer.from(iv, "hex"));
     const decrypted = Buffer.concat([
         decipher.update(Buffer.from(encryptedText, "hex")),
         decipher.final(),
@@ -74,7 +77,7 @@ const swaggerOptions = {
 };
 
 const swaggerSpec = swaggerJsdoc(swaggerOptions);
-app.use("/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+app.use("/docs", serve, setup(swaggerSpec));
 
 /**
  * @swagger
@@ -108,7 +111,7 @@ app.use("/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 app.post("/generate-wallet", async (req, res) => {
     try {
         // Generate a random private key (32 bytes in hexadecimal)
-        const privateKey = crypto.randomBytes(32).toString("hex");
+        const privateKey = randomBytes(32).toString("hex");
 
         // Create wallet from private key
         const wallet = await DirectSecp256k1Wallet.fromKey(Buffer.from(privateKey, "hex"), "xion");
@@ -339,8 +342,6 @@ app.post("/decrypt-key", (req, res) => {
 
 
 
-const axios = require("axios");
-
 const RPC_ENDPOINT = "https://api.xion-testnet-2.burnt.com";
 
 // Add this before the get-balance endpoint
@@ -397,7 +398,7 @@ app.get("/get-balance/:address", async (req, res) => {
         const apiUrl = `${RPC_ENDPOINT}/cosmos/bank/v1beta1/balances/${address}/by_denom?denom=${denom}`;
 
         // Fetch balance from Xion API
-        const response = await axios.get(apiUrl);
+        const response = await get(apiUrl);
         const balanceData = response.data.balance;
 
         // Respond with balance details
@@ -410,6 +411,199 @@ app.get("/get-balance/:address", async (req, res) => {
         res.status(500).json({ error: "Failed to fetch balance. Ensure the address is correct." });
     }
 });
+
+
+
+
+
+// Constants (default values for gas)
+const defaultGasLimit = "200000";  // Default gas limit
+const defaultGasPrice = "0.1";     // Default price per unit (example: per gas unit in uxion)
+
+// Setup CosmJS client for interacting with the blockchain (you need to provide a proper RPC URL)
+const rpcUrl = "https://rpc.xion-testnet-2.burnt.com:443";
+const client = await StargateClient.connect(rpcUrl);  // Setup your client connection
+
+// Helper function to execute contract
+const executeContract = async (senderMnemonic, contractAddress, msg, gasLimit = defaultGasLimit, gasPrice = defaultGasPrice) => {
+    try {
+        // Load sender account
+        const sender = await client.getAccount(senderMnemonic);
+
+        // Calculate the total fee based on gas and price
+        const fee = {
+            amount: [{ denom: "uxion", amount: String(gasLimit * gasPrice) }],  // Total fee calculation
+            gas: gasLimit
+        };
+
+        // Execute the contract message
+        const result = await client.execute(sender.address, contractAddress, msg, fee);
+
+        return result;
+    } catch (error) {
+        throw new Error(`Execution failed: ${error.message}`);
+    }
+};
+
+// Helper function to query contract
+const queryContract = async (contractAddress, queryMsg) => {
+    try {
+        // Query the contract with the provided message
+        const result = await client.queryContractSmart(contractAddress, queryMsg);
+        return result;
+    } catch (error) {
+        throw new Error(`Query failed: ${error.message}`);
+    }
+};
+
+
+
+/**
+ * @swagger
+ * /contracts/{contractAddress}/execute:
+ *   post:
+ *     summary: Execute a smart contract
+ *     description: Executes a transaction on the provided contract address.
+ *     parameters:
+ *       - name: contractAddress
+ *         in: path
+ *         required: true
+ *         description: The contract address to execute.
+ *         schema:
+ *           type: string
+ *       - name: senderMnemonic
+ *         in: body
+ *         required: true
+ *         description: The mnemonic phrase of the sender to authorize the transaction.
+ *         schema:
+ *           type: string
+ *       - name: msg
+ *         in: body
+ *         required: true
+ *         description: The message to be executed on the contract.
+ *         schema:
+ *           type: object
+ *       - name: gasLimit
+ *         in: body
+ *         description: The gas limit to use for the transaction (optional).
+ *         schema:
+ *           type: string
+ *           default: "200000"
+ *       - name: gasPrice
+ *         in: body
+ *         description: The gas price for the transaction (optional).
+ *         schema:
+ *           type: string
+ *           default: "0.1"
+ *     responses:
+ *       200:
+ *         description: Contract executed successfully.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 result:
+ *                   type: object
+ *       500:
+ *         description: Execution failed.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 error:
+ *                   type: string
+ */
+// API endpoint to execute contract
+app.post('/contracts/:contractAddress/execute', async (req, res) => {
+    try {
+        const { senderMnemonic, msg, gasLimit, gasPrice } = req.body;
+        const { contractAddress } = req.params;  // Extract contract address from URL parameter
+
+        // Use provided gas values or fallback to defaults
+        const finalGasLimit = gasLimit || defaultGasLimit;
+        const finalGasPrice = gasPrice || defaultGasPrice;
+
+        // Execute the contract with the provided message
+        const result = await executeContract(senderMnemonic, contractAddress, msg, finalGasLimit, finalGasPrice);
+
+        // Respond with the result of the contract execution
+        res.json({ success: true, result });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+
+
+/**
+ * @swagger
+ * /contracts/{contractAddress}/query:
+ *   post:
+ *     summary: Query a smart contract
+ *     description: Retrieve information from a contract without executing any transaction.
+ *     parameters:
+ *       - name: contractAddress
+ *         in: path
+ *         required: true
+ *         description: The contract address to query.
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               queryMsg:
+ *                 type: object
+ *                 description: The query message to fetch data from the contract.
+ *     responses:
+ *       200:
+ *         description: Contract queried successfully.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 result:
+ *                   type: object
+ *       500:
+ *         description: Query failed.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 error:
+ *                   type: string
+ */
+// API endpoint to query contract
+app.post('/contracts/:contractAddress/query', async (req, res) => {
+    try {
+        const { queryMsg } = req.body;
+        const { contractAddress } = req.params;  // Extract contract address from URL parameter
+
+        // Query the contract with the provided query message
+        const result = await queryContract(contractAddress, queryMsg);
+
+        // Respond with the result of the query
+        res.json({ success: true, result });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 
 
 
