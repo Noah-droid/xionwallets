@@ -1,16 +1,19 @@
 import express, { json } from "express";
 import bodyParser from "body-parser";
 import { randomBytes, createCipheriv, createDecipheriv } from "crypto";
-import { DirectSecp256k1Wallet } from "@cosmjs/proto-signing";
+import { DirectSecp256k1Wallet, DirectSecp256k1HdWallet } from "@cosmjs/proto-signing";
 import { toBech32 } from "@cosmjs/encoding";
 import swaggerJsdoc from "swagger-jsdoc";
 import { serve, setup } from "swagger-ui-express";
 import { StargateClient } from '@cosmjs/stargate';
 import axios from 'axios';
+import  { CosmWasmClient} from "@cosmjs/cosmwasm-stargate";
 
-
+import pkg from "@cosmjs/cosmwasm-stargate";
+const { SigningCosmWasmClient, GasPrice } = pkg;
 
 import morgan from "morgan";
+import { url } from "inspector";
 const app = express();
 // app.use(bodyParser.json());
 // Use morgan middleware for logging
@@ -70,6 +73,7 @@ const swaggerOptions = {
         servers: [
             {
                 url: "https://xionwallet-8inr.onrender.com",
+                // url: "http://127.0.0.1:3000",
             },
         ],
     },
@@ -288,55 +292,6 @@ app.post("/recover-wallet", async (req, res) => {
     }
 });
 
-/**
- * @swagger
- * /decrypt-key:
- *   post:
- *     summary: Decrypt an encrypted private key
- *     description: Decrypts a previously encrypted private key using the provided IV.
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               encryptedKey:
- *                 type: string
- *                 description: The encrypted private key.
- *                 example: "encrypted private key"
- *               iv:
- *                 type: string
- *                 description: The initialization vector (IV) used during encryption.
- *                 example: "encryption IV"
- *     responses:
- *       200:
- *         description: Private key decrypted successfully.
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 privateKey:
- *                   type: string
- *                   example: "your decrypted private key"
- *       400:
- *         description: Missing parameters.
- */
-app.post("/decrypt-key", (req, res) => {
-    const { encryptedKey, iv } = req.body;
-    if (!encryptedKey || !iv) {
-        return res.status(400).json({ error: "Encrypted key and IV are required" });
-    }
-
-    try {
-        const privateKey = decrypt(encryptedKey, iv);
-        res.status(200).json({ privateKey });
-    } catch (error) {
-        console.error("Error decrypting private key:", error);
-        res.status(500).json({ error: "Failed to decrypt private key" });
-    }
-});
 
 
 
@@ -413,142 +368,19 @@ app.get("/get-balance/:address", async (req, res) => {
 });
 
 
-
-
-
-// Constants (default values for gas)
-const defaultGasLimit = "200000";  // Default gas limit
-const defaultGasPrice = "0.1";     // Default price per unit (example: per gas unit in uxion)
-
-// Setup CosmJS client for interacting with the blockchain (you need to provide a proper RPC URL)
 const rpcUrl = "https://rpc.xion-testnet-2.burnt.com:443";
-const client = await StargateClient.connect(rpcUrl);  // Setup your client connection
+const rpcEndpoint = rpcUrl;
+const client = await StargateClient.connect(rpcUrl); 
 
-// Helper function to execute contract
-const executeContract = async (senderMnemonic, contractAddress, msg, gasLimit = defaultGasLimit, gasPrice = defaultGasPrice) => {
-    try {
-        // Load sender account
-        const sender = await client.getAccount(senderMnemonic);
-
-        // Calculate the total fee based on gas and price
-        const fee = {
-            amount: [{ denom: "uxion", amount: String(gasLimit * gasPrice) }],  // Total fee calculation
-            gas: gasLimit
-        };
-
-        // Execute the contract message
-        const result = await client.execute(sender.address, contractAddress, msg, fee);
-
-        return result;
-    } catch (error) {
-        throw new Error(`Execution failed: ${error.message}`);
-    }
-};
-
-// Helper function to query contract
-const queryContract = async (contractAddress, queryMsg) => {
-    try {
-        // Query the contract with the provided message
-        const result = await client.queryContractSmart(contractAddress, queryMsg);
-        return result;
-    } catch (error) {
-        throw new Error(`Query failed: ${error.message}`);
-    }
-};
-
-
-
+// Query smart contract function
 /**
  * @swagger
- * /contracts/{contractAddress}/execute:
- *   post:
- *     summary: Execute a smart contract
- *     description: Executes a transaction on the provided contract address.
- *     parameters:
- *       - name: contractAddress
- *         in: path
- *         required: true
- *         description: The contract address to execute.
- *         schema:
- *           type: string
- *       - name: senderMnemonic
- *         in: body
- *         required: true
- *         description: The mnemonic phrase of the sender to authorize the transaction.
- *         schema:
- *           type: string
- *       - name: msg
- *         in: body
- *         required: true
- *         description: The message to be executed on the contract.
- *         schema:
- *           type: object
- *       - name: gasLimit
- *         in: body
- *         description: The gas limit to use for the transaction (optional).
- *         schema:
- *           type: string
- *           default: "200000"
- *       - name: gasPrice
- *         in: body
- *         description: The gas price for the transaction (optional).
- *         schema:
- *           type: string
- *           default: "0.1"
- *     responses:
- *       200:
- *         description: Contract executed successfully.
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                 result:
- *                   type: object
- *       500:
- *         description: Execution failed.
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                 error:
- *                   type: string
- */
-// API endpoint to execute contract
-app.post('/contracts/:contractAddress/execute', async (req, res) => {
-    try {
-        const { senderMnemonic, msg, gasLimit, gasPrice } = req.body;
-        const { contractAddress } = req.params;  // Extract contract address from URL parameter
-
-        // Use provided gas values or fallback to defaults
-        const finalGasLimit = gasLimit || defaultGasLimit;
-        const finalGasPrice = gasPrice || defaultGasPrice;
-
-        // Execute the contract with the provided message
-        const result = await executeContract(senderMnemonic, contractAddress, msg, finalGasLimit, finalGasPrice);
-
-        // Respond with the result of the contract execution
-        res.json({ success: true, result });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-
-
-/**
- * @swagger
- * /contracts/{contractAddress}/query:
+ * /contracts/{contract_address}/query:
  *   post:
  *     summary: Query a smart contract
  *     description: Retrieve information from a contract without executing any transaction.
  *     parameters:
- *       - name: contractAddress
+ *       - name: contract_address
  *         in: path
  *         required: true
  *         description: The contract address to query.
@@ -561,7 +393,7 @@ app.post('/contracts/:contractAddress/execute', async (req, res) => {
  *           schema:
  *             type: object
  *             properties:
- *               queryMsg:
+ *               msg:
  *                 type: object
  *                 description: The query message to fetch data from the contract.
  *     responses:
@@ -583,26 +415,199 @@ app.post('/contracts/:contractAddress/execute', async (req, res) => {
  *             schema:
  *               type: object
  *               properties:
- *                 success:
- *                   type: boolean
  *                 error:
  *                   type: string
  */
-// API endpoint to query contract
-app.post('/contracts/:contractAddress/query', async (req, res) => {
+app.post('/contracts/:contract_address/query', async (req, res) => {
     try {
-        const { queryMsg } = req.body;
-        const { contractAddress } = req.params;  // Extract contract address from URL parameter
+        const { msg } = req.body;
+        const contractAddress = req.params.contract_address;
 
-        // Query the contract with the provided query message
-        const result = await queryContract(contractAddress, queryMsg);
+        const client = await CosmWasmClient.connect(rpcUrl);
+        const result = await client.queryContractSmart(contractAddress, msg);
 
-        // Respond with the result of the query
         res.json({ success: true, result });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+/**
+ * @swagger
+ *   /contracts/{contractAddress}/execute:
+ *     post:
+ *       summary: Execute smart contract
+ *       description: Executes a contract transaction on the Xion blockchain.
+ *       parameters:
+ *         - in: path
+ *           name: contractAddress
+ *           required: true
+ *           schema:
+ *             type: string
+ *           description: The address of the smart contract
+ *       requestBody:
+ *         required: true
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               required: ["senderMnemonic", "msg"]
+ *               properties:
+ *                 senderMnemonic:
+ *                   type: string
+ *                   description: Mnemonic of sender
+ *                 msg:
+ *                   type: object
+ *                   description: Execute message
+ *                 gasLimit:
+ *                   type: integer
+ *                   description: Gas limit (optional)
+ *                   example: 200000
+ *                 gasPrice:
+ *                   type: string
+ *                   description: Gas price (optional)
+ *                   example: "0.025uxion"
+ *       responses:
+ *         "200":
+ *           description: Successful execution
+ *           content:
+ *             application/json:
+ *               schema:
+ *                 type: object
+ *                 properties:
+ *                   success:
+ *                     type: boolean
+ *                   result:
+ *                     type: object
+ *                     description: Execution result
+ *         "400":
+ *           description: Bad Request
+ *         "500":
+ *           description: Server Error
+ */
+app.post('/contracts/:contractAddress/execute', async (req, res) => {
+    try {
+        const { senderMnemonic, msg, gasLimit, gasPrice } = req.body;
+        const { contractAddress } = req.params;
+
+        if (!senderMnemonic || typeof senderMnemonic !== 'string') {
+            return res.status(400).json({ success: false, error: "Invalid senderMnemonic. It must be a non-empty string." });
+        }
+
+        const finalGasLimit = gasLimit || 200000;
+        const finalGasPrice = gasPrice || "0.025uxion";
+
+        const result = await executeContract(senderMnemonic, contractAddress, msg, finalGasLimit, finalGasPrice);
+        
+        // Convert any BigInt values to string before sending the response
+        const formattedResult = JSON.parse(
+            JSON.stringify(result, (key, value) =>
+                typeof value === "bigint" ? value.toString() : value
+            )
+        );
+
+        res.json({ success: true, result: formattedResult });
+        res.json({ success: true, result });
+
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
 });
+
+async function executeContract(senderMnemonic, contractAddress, msg, gasLimit, gasPrice) {
+    const wallet = await DirectSecp256k1HdWallet.fromMnemonic(senderMnemonic, { prefix: "xion" });
+    const [firstAccount] = await wallet.getAccounts();
+
+    // Check sender's balance before execution
+    const client = await CosmWasmClient.connect(rpcEndpoint);
+    const balance = await client.getBalance(firstAccount.address, "uxion");
+    console.log(balance)
+    if (Number(balance.amount) < 100) {
+        throw new Error(`Insufficient funds: You have ${balance.amount} uxion but need at least 100 uxion.`);
+    }
+
+    // Execute transaction
+    const signingClient = await SigningCosmWasmClient.connectWithSigner(rpcEndpoint, wallet, { gasPrice });
+    const result = await signingClient.execute(firstAccount.address, contractAddress, msg, "auto", "", []);
+    
+    return result;
+}
+
+
+
+async function getBalance(address) {
+    const client = await CosmWasmClient.connect(rpcEndpoint);
+    const balance = await client.getBalance(address, "uxion");
+    console.log(`Balance: ${balance.amount} uxion`);
+    return balance.amount;
+}
+
+
+
+
+
+// /**
+//  * @swagger
+//  * /contracts/{contractAddress}/query:
+//  *   post:
+//  *     summary: Query a smart contract
+//  *     description: Retrieve information from a contract without executing any transaction.
+//  *     parameters:
+//  *       - name: contractAddress
+//  *         in: path
+//  *         required: true
+//  *         description: The contract address to query.
+//  *         schema:
+//  *           type: string
+//  *     requestBody:
+//  *       required: true
+//  *       content:
+//  *         application/json:
+//  *           schema:
+//  *             type: object
+//  *             properties:
+//  *               queryMsg:
+//  *                 type: object
+//  *                 description: The query message to fetch data from the contract.
+//  *     responses:
+//  *       200:
+//  *         description: Contract queried successfully.
+//  *         content:
+//  *           application/json:
+//  *             schema:
+//  *               type: object
+//  *               properties:
+//  *                 success:
+//  *                   type: boolean
+//  *                 result:
+//  *                   type: object
+//  *       500:
+//  *         description: Query failed.
+//  *         content:
+//  *           application/json:
+//  *             schema:
+//  *               type: object
+//  *               properties:
+//  *                 success:
+//  *                   type: boolean
+//  *                 error:
+//  *                   type: string
+//  */
+// // API endpoint to query contract
+// app.post('/contracts/:contractAddress/query', async (req, res) => {
+//     try {
+//         const { queryMsg } = req.body;
+//         const { contractAddress } = req.params;  // Extract contract address from URL parameter
+
+//         // Query the contract with the provided query message
+//         const result = await queryContract(contractAddress, queryMsg);
+
+//         // Respond with the result of the query
+//         res.json({ success: true, result });
+//     } catch (error) {
+//         res.status(500).json({ success: false, error: error.message });
+//     }
+// });
 
 
 
