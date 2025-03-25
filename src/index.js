@@ -352,8 +352,8 @@ app.get("/get-balance/:address", async (req, res) => {
         // Construct API URL
         const apiUrl = `${RPC_ENDPOINT}/cosmos/bank/v1beta1/balances/${address}/by_denom?denom=${denom}`;
 
-        // Fetch balance from Xion API
-        const response = await get(apiUrl);
+        // Fetch balance from Xion API using axios
+        const response = await axios.get(apiUrl);
         const balanceData = response.data.balance;
 
         // Respond with balance details
