@@ -5,15 +5,14 @@ import { DirectSecp256k1Wallet, DirectSecp256k1HdWallet } from "@cosmjs/proto-si
 import { toBech32 } from "@cosmjs/encoding";
 import swaggerJsdoc from "swagger-jsdoc";
 import { serve, setup } from "swagger-ui-express";
-import { StargateClient } from '@cosmjs/stargate';
+import { StargateClient, GasPrice } from '@cosmjs/stargate';
 import axios from 'axios';
-import  { CosmWasmClient} from "@cosmjs/cosmwasm-stargate";
-
-import pkg from "@cosmjs/cosmwasm-stargate";
-const { SigningCosmWasmClient, GasPrice } = pkg;
-
+import  { SigningCosmWasmClient, CosmWasmClient} from "@cosmjs/cosmwasm-stargate";
+import multer from 'multer';
+const upload = multer({ storage: multer.memoryStorage() });
 import morgan from "morgan";
 import { url } from "inspector";
+
 const app = express();
 // app.use(bodyParser.json());
 // Use morgan middleware for logging
@@ -66,7 +65,7 @@ const swaggerOptions = {
     definition: {
         openapi: "3.0.0",
         info: {
-            title: "Wallet Service API",
+            title: "Xion Service API",
             version: "1.0.0",
             description: "API for generating, recovering, and managing Xion wallets.",
         },
@@ -82,6 +81,10 @@ const swaggerOptions = {
 
 const swaggerSpec = swaggerJsdoc(swaggerOptions);
 app.use("/docs", serve, setup(swaggerSpec));
+
+
+
+
 
 /**
  * @swagger
@@ -546,68 +549,116 @@ async function getBalance(address) {
 
 
 
-// /**
-//  * @swagger
-//  * /contracts/{contractAddress}/query:
-//  *   post:
-//  *     summary: Query a smart contract
-//  *     description: Retrieve information from a contract without executing any transaction.
-//  *     parameters:
-//  *       - name: contractAddress
-//  *         in: path
-//  *         required: true
-//  *         description: The contract address to query.
-//  *         schema:
-//  *           type: string
-//  *     requestBody:
-//  *       required: true
-//  *       content:
-//  *         application/json:
-//  *           schema:
-//  *             type: object
-//  *             properties:
-//  *               queryMsg:
-//  *                 type: object
-//  *                 description: The query message to fetch data from the contract.
-//  *     responses:
-//  *       200:
-//  *         description: Contract queried successfully.
-//  *         content:
-//  *           application/json:
-//  *             schema:
-//  *               type: object
-//  *               properties:
-//  *                 success:
-//  *                   type: boolean
-//  *                 result:
-//  *                   type: object
-//  *       500:
-//  *         description: Query failed.
-//  *         content:
-//  *           application/json:
-//  *             schema:
-//  *               type: object
-//  *               properties:
-//  *                 success:
-//  *                   type: boolean
-//  *                 error:
-//  *                   type: string
-//  */
-// // API endpoint to query contract
-// app.post('/contracts/:contractAddress/query', async (req, res) => {
-//     try {
-//         const { queryMsg } = req.body;
-//         const { contractAddress } = req.params;  // Extract contract address from URL parameter
 
-//         // Query the contract with the provided query message
-//         const result = await queryContract(contractAddress, queryMsg);
+/**
+ * @swagger
+ * /contracts/deploy:
+ *   post:
+ *     summary: Deploy a smart contract to the Xion blockchain
+ *     description: Upload a WASM file and instantiate a smart contract on the Xion blockchain
+ *     tags:
+ *       - Contract Deployment
+ *     consumes:
+ *       - multipart/form-data
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - senderMnemonic
+ *               - contractFile
+ *               - instantiateMsg
+ *               - label
+ *             properties:
+ *               senderMnemonic:
+ *                 type: string
+ *                 description: The mnemonic of the sender's wallet
+ *               contractFile:
+ *                 type: string
+ *                 format: binary
+ *                 description: The WASM contract file
+ *               instantiateMsg:
+ *                 type: string
+ *                 description: JSON string of the instantiation message
+ *               label:
+ *                 type: string
+ *                 description: A human-readable label for the contract
+ *     responses:
+ *       200:
+ *         description: Contract deployed successfully
+ *       400:
+ *         description: Bad request - missing or invalid parameters
+ *       500:
+ *         description: Server error while deploying the contract
+ */
 
-//         // Respond with the result of the query
-//         res.json({ success: true, result });
-//     } catch (error) {
-//         res.status(500).json({ success: false, error: error.message });
-//     }
-// });
+
+app.post('/contracts/deploy', upload.single('contractFile'), async (req, res) => {
+    try {
+        const { senderMnemonic, instantiateMsg, label } = req.body;
+        
+        // Validate required fields
+        if (!senderMnemonic || !req.file || !instantiateMsg || !label) {
+            return res.status(400).json({ 
+                error: "Missing required fields: senderMnemonic, contractFile, instantiateMsg, label" 
+            });
+        }
+
+        // Parse instantiateMsg from JSON string
+        const parsedInstantiateMsg = JSON.parse(instantiateMsg);
+        
+        // Create wallet from mnemonic
+        const wallet = await DirectSecp256k1HdWallet.fromMnemonic(senderMnemonic, { prefix: "xion" });
+        const [firstAccount] = await wallet.getAccounts();
+        
+        // Connect with signing client using GasPrice instance
+        const gasPrice = GasPrice.fromString('0.025uxion');
+        const signingClient = await SigningCosmWasmClient.connectWithSigner(
+            rpcEndpoint,
+            wallet,
+            { gasPrice }
+        );
+        
+        // Upload the contract code using the file buffer directly
+        const uploadResult = await signingClient.upload(
+            firstAccount.address,
+            req.file.buffer,
+            "auto" // Use auto for gas estimation
+        );
+        
+        const codeId = uploadResult.codeId;
+        
+        // Instantiate the contract
+        const instantiateResult = await signingClient.instantiate(
+            firstAccount.address,
+            codeId,
+            parsedInstantiateMsg,
+            label,
+            "auto", // Use auto for gas estimation
+            {
+                funds: [] // Empty funds array since we're not sending tokens
+            }
+        );
+        
+        res.status(200).json({
+            success: true,
+            codeId,
+            contractAddress: instantiateResult.contractAddress,
+            transactionHash: instantiateResult.transactionHash
+        });
+    } catch (error) {
+        console.error("Error deploying contract:", error);
+        res.status(500).json({ 
+            success: false, 
+            error: error.message 
+        });
+    }
+});
+
+
+
 
 
 
