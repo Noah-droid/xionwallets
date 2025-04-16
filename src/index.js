@@ -71,8 +71,8 @@ const swaggerOptions = {
         },
         servers: [
             {
-                // url: "https://xionwallet-8inr.onrender.com",
-                url: "http://127.0.0.1:3000",
+                url: "https://xionwallet-8inr.onrender.com",
+                // url: "http://127.0.0.1:3000",
             },
         ],
     },
