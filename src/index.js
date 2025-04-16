@@ -71,8 +71,8 @@ const swaggerOptions = {
         },
         servers: [
             {
-                url: "https://xionwallet-8inr.onrender.com",
-                // url: "http://127.0.0.1:3000",
+                // url: "https://xionwallet-8inr.onrender.com",
+                url: "http://127.0.0.1:3000",
             },
         ],
     },
@@ -355,18 +355,51 @@ app.get("/get-balance/:address", async (req, res) => {
         // Construct API URL
         const apiUrl = `${RPC_ENDPOINT}/cosmos/bank/v1beta1/balances/${address}/by_denom?denom=${denom}`;
 
-        // Fetch balance from Xion API using axios
-        const response = await axios.get(apiUrl);
-        const balanceData = response.data.balance;
+        // Fetch balance using fetch API
+        const response = await fetch(apiUrl);
+        
+        // Check if the response is ok (status in the range 200-299)
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(
+                errorData.message || 
+                `HTTP error! status: ${response.status}`
+            );
+        }
+
+        const data = await response.json();
+        const balanceData = data.balance;
+
+        console.log(data);
+        console.log(balanceData);
+
+
+        // Additional validation for response data
+        if (!data || typeof data !== 'object') {
+            throw new Error('Invalid response format from API');
+        }
 
         // Respond with balance details
         res.status(200).json({
             address,
             balance: balanceData ? `${balanceData.amount} ${balanceData.denom}` : `0 ${denom}`,
+
         });
+
     } catch (error) {
-        console.error("Error fetching balance:", error.message);
-        res.status(500).json({ error: "Failed to fetch balance. Ensure the address is correct." });
+        console.error("Error fetching balance:", {
+            message: error.message,
+            address,
+
+        });
+
+        // Send appropriate error response
+        res.status(error.response?.status || 500).json({
+            error: "Failed to fetch balance",
+            details: error.message,
+            address,
+
+        });
     }
 });
 
